@@ -68,6 +68,7 @@ pub fn run() {
             commands::suspend_hotkeys,
             commands::get_presets,
             commands::list_input_devices,
+            commands::list_audio_apps,
             commands::get_session_state,
             commands::start_session,
             commands::stop_session,

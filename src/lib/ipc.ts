@@ -49,6 +49,11 @@ export interface Settings {
   onboarded: boolean;
   source: Source;
   micDevice: string;
+  /** 电脑声音只听这个 App（bundle ID），空字符串为全部 */
+  systemApp: string;
+  systemAppName: string;
+  /** 会议模式下用系统回声消除采集麦克风 */
+  echoCancel: boolean;
   targetLang: string;
   fallbackLang: string;
   autoStart: boolean;
@@ -135,6 +140,14 @@ export interface Presets {
   defaultPrompt: string;
 }
 
+export interface AudioApp {
+  bundleId: string;
+  name: string;
+  playing: boolean;
+  /** PNG base64 */
+  icon: string;
+}
+
 export interface InputDevice {
   id: string;
   name: string;
@@ -179,6 +192,7 @@ export const api = {
   suspendHotkeys: (suspend: boolean) => invoke<string[]>("suspend_hotkeys", { suspend }),
   getPresets: () => invoke<Presets>("get_presets"),
   listInputDevices: () => invoke<InputDevice[]>("list_input_devices"),
+  listAudioApps: () => invoke<AudioApp[]>("list_audio_apps"),
   getSessionState: () => invoke<SessionState>("get_session_state"),
   start: () => invoke<void>("start_session"),
   stop: () => invoke<void>("stop_session"),

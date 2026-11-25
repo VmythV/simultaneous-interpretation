@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import { Button, LangSelect, SOURCE_HINT, SourcePicker } from "../../components/ui";
 import { IconChevron, Logo } from "../../components/icons";
 import { formatHotkey } from "../../lib/ipc";
+import { AppPicker } from "../../components/AppPicker";
 import { useSettings, withTarget } from "../../store/settings";
 import { startListening } from "../../store/session";
 
@@ -34,6 +35,14 @@ export function IdleView() {
       <div className="mt-9 grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-3.5">
         <span className="text-right text-[14px] text-fg-2">听</span>
         <SourcePicker size="lg" value={settings.source} onChange={(source) => update((s) => ({ ...s, source }))} />
+        {settings.source !== "mic" && (
+          <>
+            <span className="text-right text-[14px] text-fg-2">来自</span>
+            <div>
+              <AppPicker />
+            </div>
+          </>
+        )}
         <span className="text-right text-[14px] text-fg-2">译成</span>
         <LangSelect value={settings.targetLang} onChange={(v) => update((s) => withTarget(s, v))} languages={presets.languages} className="w-full" />
       </div>

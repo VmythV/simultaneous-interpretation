@@ -4,6 +4,7 @@ import { Button, IconButton, LangSelect, SOURCE_LABEL, Select, Spinner, cx } fro
 import { IconGear, IconHistory, IconStop, IconSubtitle } from "../../components/icons";
 import { useSettings, withTarget } from "../../store/settings";
 import { changeSource, startListening, stopListening, useSession } from "../../store/session";
+import { AppPicker } from "../../components/AppPicker";
 
 export function TopBar({ minimal }: { minimal: boolean }) {
   const settings = useSettings((s) => s.settings)!;
@@ -29,6 +30,7 @@ export function TopBar({ minimal }: { minimal: boolean }) {
             onChange={(v) => void changeSource(v)}
             options={(["mic", "system", "both"] as Source[]).map((v) => ({ value: v, label: SOURCE_LABEL[v] }))}
           />
+          {source !== "mic" && <AppPicker compact />}
           <span className="ml-1 text-[13px] text-fg-3">译成</span>
           <LangSelect
             compact

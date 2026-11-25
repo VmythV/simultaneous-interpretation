@@ -38,16 +38,39 @@ pub fn emit_state(app: &AppHandle, state: SessionState, source: Option<Source>, 
     crate::tray::refresh(app);
 }
 
-fn start_capture(source: Source, mic_device: String, tx: CaptureSender) -> anyhow::Result<Vec<CaptureHandle>> {
-    let mic = || audio::mic::start(Some(mic_device.as_str()).filter(|d| !d.is_empty()), tx.clone());
+struct CaptureOpts {
+    mic_device: String,
+    system_app: String,
+    echo_cancel: bool,
+}
+
+fn start_capture(source: Source, opts: CaptureOpts, tx: CaptureSender) -> anyhow::Result<Vec<CaptureHandle>> {
+    let mic = || audio::mic::start(Some(opts.mic_device.as_str()).filter(|d| !d.is_empty()), tx.clone());
     #[cfg(target_os = "macos")]
-    let system = || audio::system_macos::start(tx.clone());
+    let system = || audio::system_macos::start_app(Some(opts.system_app.as_str()), tx.clone());
     #[cfg(not(target_os = "macos"))]
     let system = || -> anyhow::Result<CaptureHandle> { anyhow::bail!("电脑声音采集暂时只支持 macOS") };
     Ok(match source {
         Source::Mic => vec![mic()?],
         Source::System => vec![system()?],
         Source::Both => {
+            // 先启动麦克风：回声消除可能改变输出设备的格式，电脑声音要在它之后读取格式
+            #[cfg(target_os = "macos")]
+            let m = if opts.echo_cancel {
+                match audio::system_macos::start_mic_aec(tx.clone()) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        let _ = tx.send(audio::CaptureMsg::Info {
+                            channel: audio::Channel::Mic,
+                            message: format!("系统回声消除启动失败，改用普通麦克风：{e}"),
+                        });
+                        mic()?
+                    }
+                }
+            } else {
+                mic()?
+            };
+            #[cfg(not(target_os = "macos"))]
             let m = mic()?;
             vec![m, system()?]
         }
@@ -67,9 +90,13 @@ pub async fn start(app: &AppHandle, state: &AppState) -> Result<(), String> {
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
     let pipeline = Pipeline::start(cfg, ev_tx).map_err(|e| e.to_string())?;
     let sender = pipeline.sender();
-    let mic = settings.mic_device.clone();
+    let opts = CaptureOpts {
+        mic_device: settings.mic_device.clone(),
+        system_app: settings.system_app.clone(),
+        echo_cancel: settings.echo_cancel,
+    };
     // 打开麦克风可能会等待系统授权弹窗，放到阻塞线程里
-    let captures = match tauri::async_runtime::spawn_blocking(move || start_capture(source, mic, sender)).await {
+    let captures = match tauri::async_runtime::spawn_blocking(move || start_capture(source, opts, sender)).await {
         Ok(Ok(c)) => c,
         Ok(Err(e)) => {
             pipeline.shutdown().await;

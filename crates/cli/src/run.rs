@@ -14,7 +14,7 @@ use tingyi_core::vad::VadConfig;
 use tingyi_core::wav;
 use tokio::sync::mpsc;
 
-use crate::{Source, config, start_sources};
+use crate::{Source, SourceOpts, config, start_sources};
 
 const DIM: &str = "\x1b[2m";
 const BOLD: &str = "\x1b[1m";
@@ -123,9 +123,11 @@ fn summarize(name: &str, v: &mut [u64]) {
     println!("  {name:<16} 平均 {avg:>5} ms   中位 {p50:>5} ms   P90 {p90:>5} ms   （{} 句）", v.len());
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     source: Source,
     mic: Option<String>,
+    opts: SourceOpts,
     secs: u64,
     no_translate: bool,
     file: Option<PathBuf>,
@@ -150,7 +152,7 @@ pub async fn run(
         println!("{BOLD}按实时速度回放 {}（{:.1} 秒）{RESET}", path.display(), samples.len() as f32 / 16000.0);
         file_done = Some(play_file(samples, pipeline.sender()));
     } else {
-        captures = start_sources(source, mic.as_deref(), pipeline.sender())?;
+        captures = start_sources(source, mic.as_deref(), &opts, pipeline.sender())?;
         println!("{BOLD}开始监听，请说话（Ctrl+C 结束）{RESET}");
     }
 

@@ -30,10 +30,23 @@ pub enum Source {
     Both,
 }
 
+/// 音源的附加选项
+#[derive(clap::Args, Clone, Default)]
+pub struct SourceOpts {
+    /// 电脑声音只采集这个 App（bundle ID，见 apps 命令）
+    #[arg(long)]
+    pub app: Option<String>,
+    /// 麦克风使用系统回声消除（Voice Processing）
+    #[arg(long)]
+    pub aec: bool,
+}
+
 #[derive(Subcommand)]
 enum Cmd {
     /// 列出麦克风设备
     Devices,
+    /// 列出正在使用音频的 App（可用于 --app）
+    Apps,
     /// 检查 / 请求"系统录音"权限
     Perm {
         #[arg(long)]
@@ -45,6 +58,8 @@ enum Cmd {
         source: Source,
         #[arg(long)]
         mic: Option<String>,
+        #[command(flatten)]
+        opts: SourceOpts,
         #[arg(long, default_value_t = 10)]
         secs: u64,
         /// 保存目录（每个通道一个 16kHz WAV）
@@ -57,6 +72,8 @@ enum Cmd {
         source: Source,
         #[arg(long)]
         mic: Option<String>,
+        #[command(flatten)]
+        opts: SourceOpts,
         #[arg(long, default_value_t = 30)]
         secs: u64,
         /// 把每句保存为 WAV
@@ -81,6 +98,8 @@ enum Cmd {
         source: Source,
         #[arg(long)]
         mic: Option<String>,
+        #[command(flatten)]
+        opts: SourceOpts,
         /// 运行时长（秒），0 表示一直运行到 Ctrl+C
         #[arg(long, default_value_t = 0)]
         secs: u64,
@@ -105,14 +124,15 @@ async fn main() -> Result<()> {
     config::load_env_file(&cli.env_file);
     match cli.cmd {
         Cmd::Devices => devices(),
+        Cmd::Apps => apps(),
         Cmd::Perm { request } => perm(request),
-        Cmd::Capture { source, mic, secs, out } => capture(source, mic, secs, out).await,
-        Cmd::Vad { source, mic, secs, save, silence_ms } => vad_live(source, mic, secs, save, silence_ms).await,
+        Cmd::Capture { source, mic, opts, secs, out } => capture(source, mic, opts, secs, out).await,
+        Cmd::Vad { source, mic, opts, secs, save, silence_ms } => vad_live(source, mic, opts, secs, save, silence_ms).await,
         Cmd::VadFile { file, silence_ms } => vad_file(file, silence_ms),
         Cmd::SttFile { file } => run::stt_file(&file).await,
         Cmd::Translate { text } => run::translate_once(&text).await,
-        Cmd::Run { source, mic, secs, no_translate, file, silence_ms, speculative } => {
-            run::run(source, mic, secs, no_translate, file, silence_ms, speculative).await
+        Cmd::Run { source, mic, opts, secs, no_translate, file, silence_ms, speculative } => {
+            run::run(source, mic, opts, secs, no_translate, file, silence_ms, speculative).await
         }
     }
 }
@@ -120,6 +140,14 @@ async fn main() -> Result<()> {
 fn devices() -> Result<()> {
     for d in audio::mic::list_input_devices()? {
         println!("{} {}  [{}]", if d.is_default { "*" } else { " " }, d.name, d.id);
+    }
+    Ok(())
+}
+
+fn apps() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    for a in audio::system_macos::list_apps()? {
+        println!("{} {}  [{}]", if a.playing { "▶" } else { " " }, a.name, a.bundle_id);
     }
     Ok(())
 }
@@ -138,14 +166,21 @@ fn perm(request: bool) -> Result<()> {
     }
 }
 
-pub fn start_sources(source: Source, mic: Option<&str>, tx: mpsc::UnboundedSender<CaptureMsg>) -> Result<Vec<CaptureHandle>> {
+pub fn start_sources(source: Source, mic: Option<&str>, opts: &SourceOpts, tx: mpsc::UnboundedSender<CaptureMsg>) -> Result<Vec<CaptureHandle>> {
     let mut handles = Vec::new();
     if matches!(source, Source::Mic | Source::Both) {
+        #[cfg(target_os = "macos")]
+        if opts.aec {
+            handles.push(audio::system_macos::start_mic_aec(tx.clone())?);
+        } else {
+            handles.push(audio::mic::start(mic, tx.clone())?);
+        }
+        #[cfg(not(target_os = "macos"))]
         handles.push(audio::mic::start(mic, tx.clone())?);
     }
     if matches!(source, Source::System | Source::Both) {
         #[cfg(target_os = "macos")]
-        handles.push(audio::system_macos::start(tx.clone())?);
+        handles.push(audio::system_macos::start_app(opts.app.as_deref(), tx.clone())?);
         #[cfg(not(target_os = "macos"))]
         anyhow::bail!("电脑声音采集暂时只支持 macOS");
     }
@@ -159,9 +194,9 @@ fn meter(rms: f32) -> String {
     format!("{}{} {:>6.1}dB", "█".repeat(n), "·".repeat(20 - n), db)
 }
 
-async fn capture(source: Source, mic: Option<String>, secs: u64, out: Option<PathBuf>) -> Result<()> {
+async fn capture(source: Source, mic: Option<String>, opts: SourceOpts, secs: u64, out: Option<PathBuf>) -> Result<()> {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let _handles = start_sources(source, mic.as_deref(), tx)?;
+    let _handles = start_sources(source, mic.as_deref(), &opts, tx)?;
     let mut mic_buf = Vec::new();
     let mut sys_buf = Vec::new();
     let mut acc: [(f32, usize); 2] = [(0.0, 0), (0.0, 0)];
@@ -251,9 +286,9 @@ fn vad_file(file: PathBuf, silence_ms: u32) -> Result<()> {
     Ok(())
 }
 
-async fn vad_live(source: Source, mic: Option<String>, secs: u64, save: Option<PathBuf>, silence_ms: u32) -> Result<()> {
+async fn vad_live(source: Source, mic: Option<String>, opts: SourceOpts, secs: u64, save: Option<PathBuf>, silence_ms: u32) -> Result<()> {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let _handles = start_sources(source, mic.as_deref(), tx)?;
+    let _handles = start_sources(source, mic.as_deref(), &opts, tx)?;
     let cfg = VadConfig { min_silence_ms: silence_ms, ..Default::default() };
     let mut segs = [Segmenter::new(cfg.clone())?, Segmenter::new(cfg)?];
     if let Some(dir) = &save {

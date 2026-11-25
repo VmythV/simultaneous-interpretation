@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, type InputDevice, type Presets, type Settings } from "../lib/ipc";
 import { Button, Collapsible, Field, LangSelect, SOURCE_HINT, Select, Slider, SourcePicker, Switch } from "../components/ui";
 import { withTarget } from "../store/settings";
+import { AppPicker } from "../components/AppPicker";
 
 /** 听什么 + 译成什么（向导第 3 步、设置页"通用"共用） */
 export function BasicsForm({ draft, onChange, presets }: { draft: Settings; onChange: (s: Settings) => void; presets: Presets }) {
@@ -13,6 +14,13 @@ export function BasicsForm({ draft, onChange, presets }: { draft: Settings; onCh
           <SourcePicker value={draft.source} onChange={(source) => onChange({ ...draft, source })} />
         </div>
       </Field>
+      {draft.source !== "mic" && (
+        <Field label="电脑声音来自" hint="只听某个软件（比如腾讯会议、浏览器）时，其他软件的提示音、音乐不会被识别">
+          <div>
+            <AppPicker />
+          </div>
+        </Field>
+      )}
       <Field label="译成">
         <LangSelect value={draft.targetLang} onChange={(targetLang) => onChange(withTarget(draft, targetLang))} languages={presets.languages} className="w-56" />
       </Field>
@@ -48,6 +56,13 @@ export function GeneralForm({ draft, onChange, presets }: { draft: Settings; onC
       </Field>
 
       <Switch checked={draft.autoStart} onChange={(autoStart) => onChange({ ...draft, autoStart })} label="打开软件后自动开始" hint="省去每次点「开始」" />
+
+      <Switch
+        checked={draft.echoCancel}
+        onChange={(echoCancel) => onChange({ ...draft, echoCancel })}
+        label="会议模式回声消除"
+        hint="会议模式下用 macOS 自带的回声消除采集麦克风，外放时对方的声音不会被当成你说的。注意：开启后系统会把其他软件的音量压低约 8 分贝（macOS 的固定行为，无法关闭），并且固定使用系统默认麦克风。戴耳机时可以关掉"
+      />
 
       <div className="flex flex-col gap-3">
         <Switch

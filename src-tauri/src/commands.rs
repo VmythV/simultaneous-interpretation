@@ -84,6 +84,15 @@ pub async fn list_input_devices() -> CmdResult<Vec<InputDeviceInfo>> {
         .map_err(|e| e.to_string())
 }
 
+/// 正在使用音频的 App（"只听指定 App"的候选）
+#[tauri::command]
+pub async fn list_audio_apps() -> CmdResult<Vec<tingyi_core::audio::system_macos::AudioApp>> {
+    tauri::async_runtime::spawn_blocking(tingyi_core::audio::system_macos::list_apps)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_session_state(state: State<'_, AppState>) -> CmdResult<SessionState> {
     Ok(if session::is_running(&state).await { SessionState::Running } else { SessionState::Idle })

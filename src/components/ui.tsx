@@ -221,7 +221,7 @@ export function Switch({ checked, onChange, label, hint }: { checked: boolean; o
 export const SOURCE_HINT: Record<Source, string> = {
   mic: "麦克风：适合自己说话、现场对话",
   system: "电脑声音：适合视频、网课、线上会议",
-  both: "会议：同时听麦克风（我）和电脑声音（对方）。建议戴耳机，避免对方的声音被麦克风重复录入",
+  both: "会议：同时听麦克风（我）和电脑声音（对方）。外放时会用系统回声消除，避免对方的声音被当成你说的",
 };
 
 export const SOURCE_LABEL: Record<Source, string> = { mic: "麦克风", system: "电脑声音", both: "会议" };

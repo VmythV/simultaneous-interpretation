@@ -59,13 +59,48 @@ pub fn request_mic_permission() -> Result<String> {
     Ok(run_once("--mic-request")?["permission"].as_str().unwrap_or("unknown").to_string())
 }
 
-/// 开始采集电脑声音。音频以 16kHz 单声道发送到 `tx`。
-pub fn start(tx: CaptureSender) -> Result<CaptureHandle> {
-    start_with(&require_helper()?, tx)
+/// 正在使用音频的 App（用于"只听指定 App"）
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioApp {
+    pub bundle_id: String,
+    pub name: String,
+    /// 此刻是否在播放声音
+    pub playing: bool,
+    /// 32×32 图标（PNG base64）
+    #[serde(default)]
+    pub icon: String,
 }
 
-pub fn start_with(helper: &Path, tx: CaptureSender) -> Result<CaptureHandle> {
+/// 列出正在使用音频的 App（正在播放的排在前面）
+pub fn list_apps() -> Result<Vec<AudioApp>> {
+    let v = run_once("--list-apps")?;
+    Ok(serde_json::from_value(v["apps"].clone())?)
+}
+
+/// 开始采集电脑声音（全部）。音频以 16kHz 单声道发送到 `tx`。
+pub fn start(tx: CaptureSender) -> Result<CaptureHandle> {
+    start_app(None, tx)
+}
+
+/// 开始采集电脑声音；`app` 为 bundle ID 时只采集这个 App（含它的辅助进程）
+pub fn start_app(app: Option<&str>, tx: CaptureSender) -> Result<CaptureHandle> {
+    let mut args = Vec::new();
+    if let Some(app) = app.filter(|a| !a.is_empty()) {
+        args.extend(["--app".to_string(), app.to_string()]);
+    }
+    start_with(&require_helper()?, &args, Channel::System, tx)
+}
+
+/// 用系统回声消除（Voice Processing）采集默认麦克风，作为"我"的通道
+pub fn start_mic_aec(tx: CaptureSender) -> Result<CaptureHandle> {
+    start_with(&require_helper()?, &["--mic".into(), "--aec".into()], Channel::Mic, tx)
+}
+
+pub fn start_with(helper: &Path, args: &[String], channel: Channel, tx: CaptureSender) -> Result<CaptureHandle> {
+    let what = if channel == Channel::Mic { "麦克风" } else { "电脑声音" };
     let mut child = Command::new(helper)
+        .args(args)
         .arg("--watch-stdin")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -92,15 +127,32 @@ pub fn start_with(helper: &Path, tx: CaptureSender) -> Result<CaptureHandle> {
                 }
                 Some("started") => {
                     let perm = ev["permission"].as_str().unwrap_or("unknown");
-                    let mut message = format!("电脑声音：已开始（系统录音权限：{perm}）");
-                    if perm != "granted" {
+                    let mut message = format!("{what}：已开始（权限：{perm}）");
+                    if let Some(app) = ev["app"].as_str() {
+                        message.push_str(&format!("，只听 {app}（当前 {} 个音频进程）", ev["processes"]));
+                    }
+                    if ev["aec"].as_bool() == Some(true) {
+                        message.push_str("，系统回声消除已开启");
+                    }
+                    if perm != "granted" && channel == Channel::System {
                         message.push_str("；如果一直没有声音，请在 系统设置 → 隐私与安全性 → 屏幕与系统录音 中授权");
                     }
-                    let _ = err_tx.send(CaptureMsg::Info { channel: Channel::System, message });
+                    let _ = err_tx.send(CaptureMsg::Info { channel, message });
+                }
+                Some("processes") => {
+                    let message = format!("只听 {}：音频进程变为 {} 个", ev["app"].as_str().unwrap_or("?"), ev["processes"]);
+                    let _ = err_tx.send(CaptureMsg::Info { channel, message });
+                }
+                Some("debug") => {
+                    let _ = err_tx.send(CaptureMsg::Info { channel, message: format!("[调试] {}", ev["message"].as_str().unwrap_or("")) });
+                }
+                Some("warning") => {
+                    let message = format!("{what}：{}（code={}）", ev["message"].as_str().unwrap_or("?"), ev["code"]);
+                    let _ = err_tx.send(CaptureMsg::Info { channel, message });
                 }
                 Some("error") => {
                     let message = format!(
-                        "电脑声音采集失败：{}（{}，code={}）",
+                        "{what}采集失败：{}（{}，code={}）",
                         ev["message"].as_str().unwrap_or("?"),
                         ev["stage"].as_str().unwrap_or("?"),
                         ev["code"]
@@ -108,7 +160,7 @@ pub fn start_with(helper: &Path, tx: CaptureSender) -> Result<CaptureHandle> {
                     if let Some(t) = rate_tx.take() {
                         let _ = t.send(Err(anyhow!(message.clone())));
                     }
-                    let _ = err_tx.send(CaptureMsg::Error { channel: Channel::System, message });
+                    let _ = err_tx.send(CaptureMsg::Error { channel, message });
                 }
                 _ => {}
             }
@@ -146,19 +198,19 @@ pub fn start_with(helper: &Path, tx: CaptureSender) -> Result<CaptureHandle> {
             carry.drain(..whole);
             match resampler.push(&samples) {
                 Ok(out) if !out.is_empty() => {
-                    if tx.send(CaptureMsg::Audio { channel: Channel::System, samples: out }).is_err() {
+                    if tx.send(CaptureMsg::Audio { channel, samples: out }).is_err() {
                         break;
                     }
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    let _ = tx.send(CaptureMsg::Error { channel: Channel::System, message: e.to_string() });
+                    let _ = tx.send(CaptureMsg::Error { channel, message: e.to_string() });
                     break;
                 }
             }
         }
         if !stop2.load(Ordering::SeqCst) {
-            let _ = tx.send(CaptureMsg::Error { channel: Channel::System, message: "audio-tap 意外退出".into() });
+            let _ = tx.send(CaptureMsg::Error { channel, message: format!("{what}采集意外中断") });
         }
     })?;
 

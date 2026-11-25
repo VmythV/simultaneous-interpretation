@@ -85,6 +85,12 @@ pub struct Settings {
     pub source: Source,
     /// 麦克风设备 ID，空字符串为系统默认
     pub mic_device: String,
+    /// 电脑声音只听这个 App（bundle ID）；空字符串为全部电脑声音
+    pub system_app: String,
+    /// 上面 App 的显示名称
+    pub system_app_name: String,
+    /// 会议模式下用系统回声消除采集麦克风（外放时避免把对方的声音录成"我"说的）
+    pub echo_cancel: bool,
     pub target_lang: String,
     /// 原文已经是目标语言时，译成这个语言
     pub fallback_lang: String,
@@ -137,6 +143,9 @@ impl Default for Settings {
             onboarded: false,
             source: Source::Mic,
             mic_device: String::new(),
+            system_app: String::new(),
+            system_app_name: String::new(),
+            echo_cancel: true,
             target_lang: "zh".into(),
             fallback_lang: "en".into(),
             auto_start: false,
