@@ -4513,6 +4513,7 @@ name = "tingyi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "objc2",
  "reqwest",
  "serde",
  "serde_json",

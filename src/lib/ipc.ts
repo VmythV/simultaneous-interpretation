@@ -36,6 +36,7 @@ export interface SubtitleSettings {
   opacity: number;
   show: SubtitleShow;
   lines: number;
+  alwaysOnTop: boolean;
 }
 
 export interface HotkeySettings {

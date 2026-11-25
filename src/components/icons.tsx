@@ -175,3 +175,13 @@ export const IconCursorOff = (p: P) => (
     <path d="M3 21L21 3" />
   </Svg>
 );
+
+export const IconPin = (p: P & { filled?: boolean }) => {
+  const { filled, ...rest } = p;
+  return (
+    <Svg {...rest}>
+      <path d="M9 4h6l-1 6 4 3v2H6v-2l4-3-1-6Z" fill={filled ? "currentColor" : "none"} />
+      <path d="M12 15v6" />
+    </Svg>
+  );
+};

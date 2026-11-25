@@ -1,8 +1,8 @@
 // 悬浮字幕窗口：透明背景、最近几句，整块可拖动
 import { useEffect } from "react";
-import { api } from "../../lib/ipc";
+import { api, formatHotkey } from "../../lib/ipc";
 import { cx } from "../../components/ui";
-import { IconCursorOff, IconX } from "../../components/icons";
+import { IconCursorOff, IconPin, IconX } from "../../components/icons";
 import { syncSettingsAcrossWindows, useSettings } from "../../store/settings";
 import { initSessionListeners, isMeeting, useSession, type Item } from "../../store/session";
 
@@ -12,6 +12,7 @@ export function SubtitleWindow() {
   const settings = useSettings((s) => s.settings);
   const items = useSession((s) => s.items);
   const state = useSession((s) => s.state);
+  const clickThrough = useSession((s) => s.ui.clickThrough);
 
   useEffect(() => {
     document.documentElement.style.background = "transparent";
@@ -51,14 +52,26 @@ export function SubtitleWindow() {
         recent.map((it) => <Line key={it.id} item={it} show={show} size={cfg.fontSize} meeting={meeting} />)
       )}
 
+      {/* 鼠标放上去时显示：置顶开关、隐藏。鼠标穿透开关不放在这里，避免拖动时误点后字幕再也点不动 */}
       <div className="absolute right-2 top-2 hidden gap-0.5 group-hover:flex">
-        <HoverButton label="鼠标穿透：点击会穿过字幕（用快捷键或菜单栏关闭）" onClick={() => void api.setClickThrough(true)}>
-          <IconCursorOff size={14} />
+        <HoverButton
+          label={cfg.alwaysOnTop ? "取消置顶" : "始终置顶"}
+          active={cfg.alwaysOnTop}
+          onClick={() => useSettings.getState().update((s) => ({ ...s, subtitle: { ...s.subtitle, alwaysOnTop: !s.subtitle.alwaysOnTop } }))}
+        >
+          <IconPin size={14} filled={cfg.alwaysOnTop} />
         </HoverButton>
         <HoverButton label="隐藏字幕" onClick={() => void api.setSubtitleVisible(false)}>
           <IconX size={14} />
         </HoverButton>
       </div>
+
+      {clickThrough && (
+        <div className="pointer-events-none absolute left-3 top-2 flex items-center gap-1 text-[11px] text-white/45" style={SHADOW}>
+          <IconCursorOff size={12} />
+          鼠标穿透中{settings.hotkeys.clickThrough ? `，按 ${formatHotkey(settings.hotkeys.clickThrough)} 关闭` : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -94,9 +107,14 @@ function Line({ item, show, size, meeting }: { item: Item; show: "both" | "trans
   );
 }
 
-function HoverButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function HoverButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
   return (
-    <button title={label} aria-label={label} onClick={onClick} className="rounded-md p-1.5 text-white/60 hover:bg-white/15 hover:text-white">
+    <button
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={cx("rounded-md p-1.5 hover:bg-white/15 hover:text-white", active ? "text-white" : "text-white/60")}
+    >
       {children}
     </button>
   );

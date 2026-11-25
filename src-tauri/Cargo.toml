@@ -22,3 +22,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 tingyi-core = { path = "../crates/core" }
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# 直接设置 NSWindow 的层级和桌面空间行为（悬浮字幕置顶，包括全屏应用之上）
+objc2 = "0.6"

@@ -1,5 +1,5 @@
 // 设置页"字幕"：悬浮字幕的开关、穿透、样式
-import { api, type Settings, type SubtitleSettings, type SubtitleShow, type UiState } from "../lib/ipc";
+import { api, formatHotkey, type Settings, type SubtitleSettings, type SubtitleShow, type UiState } from "../lib/ipc";
 import { Field, Select, Slider, Switch } from "../components/ui";
 
 export function SubtitleForm({ draft, onChange, ui }: { draft: Settings; onChange: (s: Settings) => void; ui: UiState }) {
@@ -11,13 +11,19 @@ export function SubtitleForm({ draft, onChange, ui }: { draft: Settings; onChang
         checked={ui.subtitleVisible}
         onChange={(v) => void api.setSubtitleVisible(v)}
         label="显示悬浮字幕"
-        hint="始终显示在其他窗口上面。拖动字幕可以移动位置，拖动边缘可以调整大小"
+        hint="把鼠标放在字幕上按住拖动可以移动位置，拖动边缘可以调整大小"
+      />
+      <Switch
+        checked={s.alwaysOnTop}
+        onChange={(alwaysOnTop) => set({ alwaysOnTop })}
+        label="始终置顶"
+        hint="显示在所有窗口上面，包括全屏的视频和会议软件"
       />
       <Switch
         checked={ui.clickThrough}
         onChange={(v) => void api.setClickThrough(v)}
         label="鼠标穿透"
-        hint="开启后点击会穿过字幕，落到下面的窗口上（此时不能拖动字幕）。可以用快捷键或菜单栏关闭"
+        hint={`开启后点击会穿过字幕，落到下面的窗口上（此时不能拖动字幕）。${draft.hotkeys.clickThrough ? `快捷键 ${formatHotkey(draft.hotkeys.clickThrough)} 可以随时开关` : "可以在菜单栏图标里关闭"}`}
       />
       <div className="border-t border-line" />
       <Field label="显示内容">

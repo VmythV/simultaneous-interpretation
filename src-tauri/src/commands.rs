@@ -40,6 +40,9 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
     if old.target_lang != settings.target_lang || old.fallback_lang != settings.fallback_lang {
         session::update_languages(&state, &settings.target_lang, &settings.fallback_lang).await;
     }
+    if old.subtitle.always_on_top != settings.subtitle.always_on_top {
+        crate::subtitle::apply_on_top(&app, settings.subtitle.always_on_top);
+    }
     let warnings = if old.hotkeys != settings.hotkeys {
         crate::shortcuts::apply(&app, &settings.hotkeys)
     } else {

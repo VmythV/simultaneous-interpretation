@@ -39,11 +39,13 @@ pub struct SubtitleSettings {
     pub show: SubtitleShow,
     /// 显示最近几句
     pub lines: u32,
+    /// 始终显示在所有窗口上面（包括全屏应用）
+    pub always_on_top: bool,
 }
 
 impl Default for SubtitleSettings {
     fn default() -> Self {
-        Self { font_size: 26, opacity: 0.72, show: SubtitleShow::Both, lines: 2 }
+        Self { font_size: 26, opacity: 0.72, show: SubtitleShow::Both, lines: 2, always_on_top: true }
     }
 }
 
