@@ -1,7 +1,7 @@
 // 基础组件：按钮、输入框、下拉框、开关、分段选择、滑块、折叠区、测试按钮
-import { useId, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { errorText, type Language, type Source, type TestResult } from "../lib/ipc";
-import { IconCheck, IconChevron, IconExternal, IconEye, IconEyeOff, IconMic, IconMonitor, IconX } from "./icons";
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { errorText, formatHotkey, type Language, type Source, type TestResult } from "../lib/ipc";
+import { IconCheck, IconChevron, IconExternal, IconEye, IconEyeOff, IconMic, IconMonitor, IconUsers, IconX } from "./icons";
 import { api } from "../lib/ipc";
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -218,11 +218,21 @@ export function Switch({ checked, onChange, label, hint }: { checked: boolean; o
   );
 }
 
-/** 听什么：麦克风 / 电脑声音 */
+export const SOURCE_HINT: Record<Source, string> = {
+  mic: "麦克风：适合自己说话、现场对话",
+  system: "电脑声音：适合视频、网课、线上会议",
+  both: "会议：同时听麦克风（我）和电脑声音（对方）。建议戴耳机，避免对方的声音被麦克风重复录入",
+};
+
+export const SOURCE_LABEL: Record<Source, string> = { mic: "麦克风", system: "电脑声音", both: "会议" };
+
+/** 听什么：麦克风 / 电脑声音 / 会议 */
 export function SourcePicker({ value, onChange, size = "md" }: { value: Source; onChange: (v: Source) => void; size?: "md" | "lg" }) {
+  const is = size === "lg" ? 17 : 15;
   const opts: { v: Source; label: string; icon: ReactNode }[] = [
-    { v: "mic", label: "麦克风", icon: <IconMic size={size === "lg" ? 17 : 15} /> },
-    { v: "system", label: "电脑声音", icon: <IconMonitor size={size === "lg" ? 17 : 15} /> },
+    { v: "mic", label: "麦克风", icon: <IconMic size={is} /> },
+    { v: "system", label: "电脑声音", icon: <IconMonitor size={is} /> },
+    { v: "both", label: "会议", icon: <IconUsers size={is} /> },
   ];
   return (
     <div className={cx("inline-flex rounded-xl bg-surface-2 p-1", size === "lg" ? "h-11" : "h-9")}>
@@ -368,5 +378,96 @@ export function Spinner({ size = 14 }: { size?: number }) {
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity=".25" strokeWidth="3" fill="none" />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" />
     </svg>
+  );
+}
+
+/** 下拉菜单（导出格式等） */
+export function Menu({
+  trigger,
+  items,
+  placement = "up",
+  align = "left",
+}: {
+  trigger: (open: () => void) => ReactNode;
+  items: { label: string; hint?: string; onSelect: () => void }[];
+  placement?: "up" | "down";
+  align?: "left" | "right";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      {trigger(() => setOpen(!open))}
+      {open && (
+        <div
+          className={cx(
+            "absolute z-20 min-w-[180px] overflow-hidden rounded-xl border border-line bg-bg py-1 shadow-lg",
+            placement === "up" ? "bottom-full mb-1.5" : "top-full mt-1.5",
+            align === "left" ? "left-0" : "right-0",
+          )}
+        >
+          {items.map((it) => (
+            <button
+              key={it.label}
+              className="flex w-full flex-col items-start px-3.5 py-1.5 text-left hover:bg-surface-2"
+              onClick={() => {
+                setOpen(false);
+                it.onSelect();
+              }}
+            >
+              <span className="text-[13px] text-fg">{it.label}</span>
+              {it.hint && <span className="text-[11px] text-fg-3">{it.hint}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 快捷键录制：点击后按下组合键（至少包含 ⌃/⌥/⌘ 之一）；Delete 清除，Esc 取消 */
+export function HotkeyInput({ value, onChange, onRecording }: { value: string; onChange: (v: string) => void; onRecording?: (on: boolean) => void }) {
+  const [recording, setRecording] = useState(false);
+  const setRec = (on: boolean) => {
+    setRecording(on);
+    onRecording?.(on);
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return;
+    if (e.key === "Escape") return setRec(false);
+    if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      onChange("");
+      return setRec(false);
+    }
+    if (!e.ctrlKey && !e.altKey && !e.metaKey) return;
+    const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Cmd"].filter(Boolean);
+    const key = e.code.replace(/^Key/, "").replace(/^Digit/, "");
+    onChange([...mods, key].join("+"));
+    setRec(false);
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => setRec(!recording)}
+      onKeyDown={onKeyDown}
+      onBlur={() => recording && setRec(false)}
+      className={cx(
+        "h-9 w-44 rounded-lg border px-3 text-left text-[13px] transition outline-none",
+        recording ? "border-accent ring-2 ring-accent/20 text-accent" : "border-line bg-bg text-fg hover:border-fg-3",
+      )}
+    >
+      {recording ? "请按下快捷键…" : value ? <span className="tracking-wider">{formatHotkey(value)}</span> : <span className="text-fg-3">未设置</span>}
+    </button>
   );
 }

@@ -10,7 +10,8 @@
     "sidecar": "scripts/build-audio-tap.sh",
     "tauri": "tauri",
     "app:dev": "scripts/build-audio-tap.sh && tauri dev",
-    "app:build": "scripts/build-audio-tap.sh && tauri build"
+    "app:build": "scripts/build-app.sh",
+    "signing-cert": "scripts/create-signing-cert.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.5",

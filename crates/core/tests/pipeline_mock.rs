@@ -20,7 +20,7 @@ async fn streaming_pipeline_end_to_end() {
 
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
     let stt = cfg(&mock.url, "qwen-audio-3.1-asr-flash-streaming", "test-key");
-    let pipeline = Pipeline::start(PipelineConfig { vad: VadConfig::default(), stt, translate: None }, ev_tx).unwrap();
+    let pipeline = Pipeline::start(PipelineConfig { vad: VadConfig::default(), stt, translate: None, speculative: true }, ev_tx).unwrap();
     let tx = pipeline.sender();
     let silence = vec![0.0f32; 16_000];
     for chunk in samples.chunks(1600).chain(silence.chunks(1600)) {

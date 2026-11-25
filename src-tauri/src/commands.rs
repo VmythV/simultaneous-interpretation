@@ -8,9 +8,11 @@ use tingyi_core::audio::mic::InputDeviceInfo;
 use tingyi_core::pipeline::PipelineEvent;
 use tingyi_core::translate::{TranslateRequest, lang, openai_chat};
 
+use crate::history::{self, Entry, Format, Record, Summary};
 use crate::presets::{self, Presets};
-use crate::session::{self, AppState, SessionState};
+use crate::session::{self, SessionState};
 use crate::settings::Settings;
+use crate::state::{AppState, UiState};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -21,8 +23,15 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.settings()
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveResult {
+    /// 非致命问题，如快捷键注册失败
+    pub warnings: Vec<String>,
+}
+
 #[tauri::command]
-pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> CmdResult<()> {
+pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> CmdResult<SaveResult> {
     let old = {
         let mut guard = state.settings.lock().unwrap();
         std::mem::replace(&mut *guard, settings.clone())
@@ -31,8 +40,32 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
     if old.target_lang != settings.target_lang || old.fallback_lang != settings.fallback_lang {
         session::update_languages(&state, &settings.target_lang, &settings.fallback_lang).await;
     }
+    let warnings = if old.hotkeys != settings.hotkeys {
+        crate::shortcuts::apply(&app, &settings.hotkeys)
+    } else {
+        state.hotkey_errors.lock().unwrap().clone()
+    };
     let _ = app.emit("settings-changed", &settings);
-    Ok(())
+    crate::tray::refresh(&app);
+    Ok(SaveResult { warnings })
+}
+
+#[tauri::command]
+pub fn get_hotkey_errors(state: State<'_, AppState>) -> Vec<String> {
+    state.hotkey_errors.lock().unwrap().clone()
+}
+
+/// 录制新快捷键时暂停全局快捷键（否则按下的组合键会被全局快捷键截走），结束后恢复
+#[tauri::command]
+pub fn suspend_hotkeys(app: AppHandle, state: State<'_, AppState>, suspend: bool) -> Vec<String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    if suspend {
+        let _ = app.global_shortcut().unregister_all();
+        state.hotkeys.lock().unwrap().clear();
+        Vec::new()
+    } else {
+        crate::shortcuts::apply(&app, &state.settings().hotkeys)
+    }
 }
 
 #[tauri::command]
@@ -156,6 +189,7 @@ pub async fn retranslate(app: AppHandle, state: State<'_, AppState>, utt_id: u64
     let http = state.http.clone();
     tauri::async_runtime::spawn(async move {
         let emit = |ev: PipelineEvent| {
+            app.state::<AppState>().history.on_event(&ev);
             let _ = app.emit("pipeline", &ev);
         };
         emit(PipelineEvent::TrStart { utt_id, target_lang: target.clone() });
@@ -201,5 +235,115 @@ pub async fn open_settings(app: AppHandle, tab: Option<String>) -> CmdResult<()>
         .min_inner_size(600.0, 480.0)
         .build()
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ───────────── 悬浮字幕 ─────────────
+
+#[tauri::command]
+pub fn get_ui_state(state: State<'_, AppState>) -> UiState {
+    state.ui()
+}
+
+#[tauri::command]
+pub fn set_subtitle_visible(app: AppHandle, visible: bool) -> CmdResult<()> {
+    crate::subtitle::set_visible(&app, visible)
+}
+
+#[tauri::command]
+pub fn set_click_through(app: AppHandle, on: bool) {
+    crate::subtitle::set_click_through(&app, on);
+}
+
+#[tauri::command]
+pub fn show_main(app: AppHandle) {
+    crate::tray::show_main(&app);
+}
+
+// ───────────── 历史记录 ─────────────
+
+/// 打开（或聚焦）历史记录窗口
+#[tauri::command]
+pub async fn open_history(app: AppHandle) -> CmdResult<()> {
+    app.state::<AppState>().history.flush();
+    if let Some(win) = app.get_webview_window("history") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        let _ = win.emit("history-changed", ());
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "history", WebviewUrl::App("index.html#/history".into()))
+        .title("历史记录")
+        .inner_size(900.0, 620.0)
+        .min_inner_size(680.0, 420.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_history(state: State<'_, AppState>) -> Vec<Summary> {
+    state.history.flush();
+    state.history.list()
+}
+
+#[tauri::command]
+pub fn get_history(state: State<'_, AppState>, id: String) -> CmdResult<Record> {
+    state.history.get(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_history(app: AppHandle, state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    state.history.delete(&id).map_err(|e| e.to_string())?;
+    let _ = app.emit("history-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_history(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    state.history.clear().map_err(|e| e.to_string())?;
+    let _ = app.emit("history-changed", ());
+    Ok(())
+}
+
+/// 弹出保存对话框并写入文件。返回保存的路径；用户取消时返回 None
+async fn save_with_dialog(app: &AppHandle, file_name: &str, format: Format, content: String) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let name: String = file_name.chars().map(|c| if "/\\:".contains(c) { '-' } else { c }).collect();
+    app.dialog()
+        .file()
+        .set_title("导出")
+        .set_file_name(format!("{name}.{}", format.ext()))
+        .add_filter(format.filter_name(), &[format.ext()])
+        .save_file(move |p| {
+            let _ = tx.send(p);
+        });
+    let Some(path) = rx.await.map_err(|e| e.to_string())? else { return Ok(None) };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, content).map_err(|e| format!("写入文件失败：{e}"))?;
+    Ok(Some(path.display().to_string()))
+}
+
+/// 导出一条历史记录。title 由前端按本地时间格式化
+#[tauri::command]
+pub async fn export_history(app: AppHandle, state: State<'_, AppState>, id: String, format: Format, title: String) -> CmdResult<Option<String>> {
+    let record = state.history.get(&id).map_err(|e| e.to_string())?;
+    let content = history::render(&title, &record.entries, format);
+    save_with_dialog(&app, &title, format, content).await
+}
+
+/// 导出主窗口当前显示的内容
+#[tauri::command]
+pub async fn export_entries(app: AppHandle, entries: Vec<Entry>, format: Format, title: String) -> CmdResult<Option<String>> {
+    let content = history::render(&title, &entries, format);
+    save_with_dialog(&app, &title, format, content).await
+}
+
+/// 在访达中显示文件
+#[tauri::command]
+pub fn reveal_file(path: String) -> CmdResult<()> {
+    std::process::Command::new("open").arg("-R").arg(&path).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }

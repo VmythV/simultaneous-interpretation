@@ -16,6 +16,63 @@ pub enum Source {
     #[default]
     Mic,
     System,
+    /// 会议：麦克风（我）+ 电脑声音（对方）同时听
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtitleShow {
+    #[default]
+    Both,
+    Translation,
+    Original,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SubtitleSettings {
+    /// 译文字号（原文按比例缩小）
+    pub font_size: u32,
+    /// 背景不透明度 0~1
+    pub opacity: f32,
+    pub show: SubtitleShow,
+    /// 显示最近几句
+    pub lines: u32,
+}
+
+impl Default for SubtitleSettings {
+    fn default() -> Self {
+        Self { font_size: 26, opacity: 0.72, show: SubtitleShow::Both, lines: 2 }
+    }
+}
+
+/// 全局快捷键（Tauri 加速键格式，如 "Ctrl+Alt+S"；空字符串表示不设置）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HotkeySettings {
+    pub toggle: String,
+    pub subtitle: String,
+    pub click_through: String,
+}
+
+impl Default for HotkeySettings {
+    fn default() -> Self {
+        Self { toggle: "Ctrl+Alt+S".into(), subtitle: "Ctrl+Alt+Z".into(), click_through: "Ctrl+Alt+X".into() }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HistorySettings {
+    /// 是否把每次的记录保存到本地
+    pub save: bool,
+}
+
+impl Default for HistorySettings {
+    fn default() -> Self {
+        Self { save: true }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +95,9 @@ pub struct Settings {
     pub vad_threshold: f32,
     pub stt: SttSettings,
     pub translate: LlmSettings,
+    pub subtitle: SubtitleSettings,
+    pub hotkeys: HotkeySettings,
+    pub history: HistorySettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +143,9 @@ impl Default for Settings {
             vad_threshold: 0.5,
             stt: SttSettings::default(),
             translate: LlmSettings::default(),
+            subtitle: SubtitleSettings::default(),
+            hotkeys: HotkeySettings::default(),
+            history: HistorySettings::default(),
         }
     }
 }
@@ -213,6 +276,7 @@ impl Settings {
             },
             stt: self.stt_config()?,
             translate: self.translate_settings()?,
+            speculative: false,
         })
     }
 }

@@ -91,8 +91,11 @@ enum Cmd {
         #[arg(long)]
         file: Option<PathBuf>,
         /// 断句停顿时长（毫秒）
-        #[arg(long, default_value_t = 600)]
+        #[arg(long, default_value_t = 500)]
         silence_ms: u32,
+        /// 开启抢先翻译（对比延迟用）
+        #[arg(long)]
+        speculative: bool,
     },
 }
 
@@ -108,8 +111,8 @@ async fn main() -> Result<()> {
         Cmd::VadFile { file, silence_ms } => vad_file(file, silence_ms),
         Cmd::SttFile { file } => run::stt_file(&file).await,
         Cmd::Translate { text } => run::translate_once(&text).await,
-        Cmd::Run { source, mic, secs, no_translate, file, silence_ms } => {
-            run::run(source, mic, secs, no_translate, file, silence_ms).await
+        Cmd::Run { source, mic, secs, no_translate, file, silence_ms, speculative } => {
+            run::run(source, mic, secs, no_translate, file, silence_ms, speculative).await
         }
     }
 }

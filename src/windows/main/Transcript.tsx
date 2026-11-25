@@ -1,14 +1,15 @@
 // 记录区：原文（灰、小）+ 译文（深、大），自动滚到最新
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api } from "../../lib/ipc";
-import { Button, cx } from "../../components/ui";
-import { IconArrowDown, IconCheck, IconCopy, IconTrash } from "../../components/icons";
+import { api, errorText, formatDateTime, type ExportFormat } from "../../lib/ipc";
+import { Button, Menu, cx } from "../../components/ui";
+import { IconArrowDown, IconCheck, IconCopy, IconExport, IconTrash } from "../../components/icons";
 import { useSettings } from "../../store/settings";
-import { retranslate, transcriptText, useSession, type Item } from "../../store/session";
+import { isMeeting, retranslate, toExportEntries, transcriptText, useSession, type Item } from "../../store/session";
 
 export function Transcript() {
   const items = useSession((s) => s.items);
   const translating = useSettings((s) => s.settings?.translate.enabled ?? true);
+  const meeting = isMeeting(items);
   const ref = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
 
@@ -30,7 +31,7 @@ export function Transcript() {
         ) : (
           <div className="selectable mx-auto flex max-w-[760px] flex-col gap-6">
             {items.map((it) => (
-              <Row key={it.id} item={it} translating={translating} />
+              <Row key={it.id} item={it} translating={translating} meeting={meeting} />
             ))}
           </div>
         )}
@@ -48,9 +49,9 @@ export function Transcript() {
   );
 }
 
-function Row({ item, translating }: { item: Item; translating: boolean }) {
-  return (
-    <div className="flex flex-col gap-1.5">
+function Row({ item, translating, meeting }: { item: Item; translating: boolean; meeting: boolean }) {
+  const body = (
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <p
         className={cx(
           "leading-relaxed break-words",
@@ -60,7 +61,22 @@ function Row({ item, translating }: { item: Item; translating: boolean }) {
       >
         {item.text}
       </p>
-      {translating && item.final && <Translation item={item} />}
+      {translating && (item.final || item.trState !== "none") && <Translation item={item} />}
+    </div>
+  );
+  if (!meeting) return body;
+  const me = item.channel === "mic";
+  return (
+    <div className="flex gap-3">
+      <span
+        className={cx(
+          "mt-[3px] h-5 shrink-0 rounded-md px-1.5 text-[11px] font-medium leading-5",
+          me ? "bg-accent-soft text-accent" : "bg-surface-2 text-fg-2",
+        )}
+      >
+        {me ? "我" : "对方"}
+      </span>
+      {body}
     </div>
   );
 }
@@ -103,10 +119,12 @@ function Listening() {
     return <div className="flex h-full items-center justify-center text-[14px] text-fg-3">{state === "starting" ? "准备中…" : "已停止"}</div>;
 
   const noSound = lastSoundAt === 0 && startedAt > 0 && now - startedAt > 8000;
-  const isSystem = source === "system";
+  const isSystem = source === "system" || source === "both";
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
-      <p className="text-[15px] text-fg-2">{isSystem ? "正在听电脑声音，播放视频或会议即可" : "正在听麦克风，请开始说话"}</p>
+      <p className="text-[15px] text-fg-2">
+        {source === "both" ? "会议模式：同时在听你和对方的声音" : isSystem ? "正在听电脑声音，播放视频或会议即可" : "正在听麦克风，请开始说话"}
+      </p>
       <p className="mt-2 text-xs text-fg-3">说的话会实时显示在这里</p>
       {noSound && (
         <div className="mt-6 max-w-[420px] rounded-xl bg-surface px-4 py-3 text-left text-[13px] leading-relaxed text-fg-2">
@@ -138,6 +156,22 @@ export function BottomBar() {
     return () => clearTimeout(t);
   }, [confirmClear]);
 
+  const [exported, setExported] = useState<string | null>(null);
+  const doExport = async (format: ExportFormat) => {
+    const title = `听译记录 ${formatDateTime(items[0]?.startAt ?? Date.now())}`;
+    try {
+      const path = await api.exportEntries(toExportEntries(items), format, title);
+      if (path) setExported(path);
+    } catch (e) {
+      useSession.setState({ banner: { message: `导出失败：${errorText(e)}` } });
+    }
+  };
+  useEffect(() => {
+    if (!exported) return;
+    const t = setTimeout(() => setExported(null), 6000);
+    return () => clearTimeout(t);
+  }, [exported]);
+
   const copy = async () => {
     await navigator.clipboard.writeText(transcriptText(items));
     setCopied(true);
@@ -157,10 +191,28 @@ export function BottomBar() {
         {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         {copied ? "已复制" : "复制全部"}
       </Button>
+      <Menu
+        trigger={(toggle) => (
+          <Button variant="ghost" size="sm" disabled={!count} onClick={toggle}>
+            <IconExport size={14} />
+            导出
+          </Button>
+        )}
+        items={[
+          { label: "纯文本 (.txt)", hint: "原文和译文逐句排列", onSelect: () => void doExport("txt") },
+          { label: "Markdown (.md)", hint: "带时间，适合做笔记", onSelect: () => void doExport("md") },
+          { label: "SRT 字幕 (.srt)", hint: "带时间轴，可配合视频使用", onSelect: () => void doExport("srt") },
+        ]}
+      />
       <Button variant="ghost" size="sm" disabled={!items.length} onClick={onClear} className={cx(confirmClear && "text-danger")}>
         <IconTrash size={14} />
         {confirmClear ? "再点一次清空" : "清空"}
       </Button>
+      {exported && (
+        <button className="ml-1 truncate text-xs text-ok hover:underline" onClick={() => void api.revealFile(exported)}>
+          已导出，在访达中显示
+        </button>
+      )}
       <div className="flex-1" />
       {count > 0 && <span className="pr-1 text-xs text-fg-3">{count} 句</span>}
     </footer>

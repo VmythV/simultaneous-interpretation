@@ -17,6 +17,8 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-dialog = "2"
 tingyi-core = { path = "../crates/core" }
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }

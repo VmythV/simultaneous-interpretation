@@ -1,7 +1,8 @@
 // 未开始时的主界面：一眼看懂用途 + 三步用法 + 两个选择 + 开始按钮
 import { Fragment } from "react";
-import { Button, LangSelect, SourcePicker } from "../../components/ui";
+import { Button, LangSelect, SOURCE_HINT, SourcePicker } from "../../components/ui";
 import { IconChevron, Logo } from "../../components/icons";
+import { formatHotkey } from "../../lib/ipc";
 import { useSettings, withTarget } from "../../store/settings";
 import { startListening } from "../../store/session";
 
@@ -36,15 +37,16 @@ export function IdleView() {
         <span className="text-right text-[14px] text-fg-2">译成</span>
         <LangSelect value={settings.targetLang} onChange={(v) => update((s) => withTarget(s, v))} languages={presets.languages} className="w-full" />
       </div>
-      <p className="mt-3 text-xs text-fg-3">
-        {settings.source === "mic" ? "麦克风：适合自己说话、现场对话" : "电脑声音：适合视频、网课、线上会议"}
-      </p>
+      <p className="mt-3 max-w-[420px] text-center text-xs leading-relaxed text-fg-3">{SOURCE_HINT[settings.source]}</p>
 
       <Button variant="primary" size="lg" className="mt-8 w-52" onClick={() => void startListening()}>
         <span className="h-2.5 w-2.5 rounded-full bg-white" />
         开始
       </Button>
-      <p className="mt-3 text-xs text-fg-3">快捷键 ⌘ + Enter 开始 / 停止</p>
+      <p className="mt-3 text-xs text-fg-3">
+        快捷键 ⌘ + Enter 开始 / 停止
+        {settings.hotkeys.toggle && `；在其他软件里按 ${formatHotkey(settings.hotkeys.toggle)}`}
+      </p>
     </div>
   );
 }

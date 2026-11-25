@@ -20,7 +20,7 @@ export function MainWindow() {
     const cleanups: (() => void)[] = [];
     (async () => {
       await useSettings.getState().load();
-      const un = [await initSessionListeners(), await syncSettingsAcrossWindows()];
+      const un = [await initSessionListeners(true), await syncSettingsAcrossWindows()];
       if (cancelled) return un.forEach((f) => f());
       cleanups.push(...un);
       const s = useSettings.getState().settings;

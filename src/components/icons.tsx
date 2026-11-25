@@ -141,3 +141,37 @@ export function Logo({ size = 56 }: { size?: number }) {
     </svg>
   );
 }
+
+export const IconUsers = (p: P) => (
+  <Svg {...p}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.5a6.5 6.5 0 0 1 3 5.5" />
+  </Svg>
+);
+
+export const IconSubtitle = (p: P) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="M7 15h4M13 15h4M7 11.5h10" />
+  </Svg>
+);
+
+export const IconHistory = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+    <path d="M3 3v5h5M12 7v5l3.5 2" />
+  </Svg>
+);
+
+export const IconExport = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 3v12M7 10l5 5 5-5M4 19h16" />
+  </Svg>
+);
+
+export const IconCursorOff = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 3l14 7-6 2-2 6L5 3Z" />
+    <path d="M3 21L21 3" />
+  </Svg>
+);

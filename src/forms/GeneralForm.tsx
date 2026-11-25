@@ -1,14 +1,14 @@
 // 通用设置：听什么、译成什么、断句参数
 import { useEffect, useState } from "react";
 import { api, type InputDevice, type Presets, type Settings } from "../lib/ipc";
-import { Collapsible, Field, LangSelect, Select, Slider, SourcePicker, Switch } from "../components/ui";
+import { Button, Collapsible, Field, LangSelect, SOURCE_HINT, Select, Slider, SourcePicker, Switch } from "../components/ui";
 import { withTarget } from "../store/settings";
 
 /** 听什么 + 译成什么（向导第 3 步、设置页"通用"共用） */
 export function BasicsForm({ draft, onChange, presets }: { draft: Settings; onChange: (s: Settings) => void; presets: Presets }) {
   return (
     <div className="flex flex-col gap-6">
-      <Field label="默认听" hint={draft.source === "mic" ? "麦克风：适合自己说话、现场对话" : "电脑声音：适合视频、网课、线上会议"}>
+      <Field label="默认听" hint={SOURCE_HINT[draft.source]}>
         <div>
           <SourcePicker value={draft.source} onChange={(source) => onChange({ ...draft, source })} />
         </div>
@@ -49,6 +49,21 @@ export function GeneralForm({ draft, onChange, presets }: { draft: Settings; onC
 
       <Switch checked={draft.autoStart} onChange={(autoStart) => onChange({ ...draft, autoStart })} label="打开软件后自动开始" hint="省去每次点「开始」" />
 
+      <div className="flex flex-col gap-3">
+        <Switch
+          checked={draft.history.save}
+          onChange={(save) => onChange({ ...draft, history: { save } })}
+          label="保存历史记录"
+          hint="每次从开始到停止的内容保存在本机，可以随时查看和导出"
+        />
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => void api.openHistory()}>
+            打开历史记录
+          </Button>
+          <ClearHistoryButton />
+        </div>
+      </div>
+
       <Collapsible>
         <Field label="断句停顿时长" hint="停顿超过这个时长就算一句话说完。越短出字越快，但可能把一句话切成两半。">
           <Slider value={draft.silenceMs} onChange={(silenceMs) => onChange({ ...draft, silenceMs })} min={300} max={1000} step={50} format={(v) => `${v} 毫秒`} />
@@ -68,5 +83,27 @@ export function GeneralForm({ draft, onChange, presets }: { draft: Settings; onC
         </Field>
       </Collapsible>
     </div>
+  );
+}
+
+function ClearHistoryButton() {
+  const [confirm, setConfirm] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!confirm) return;
+    const t = setTimeout(() => setConfirm(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirm]);
+  const onClick = async () => {
+    if (!confirm) return setConfirm(true);
+    await api.clearHistory();
+    setConfirm(false);
+    setDone(true);
+    setTimeout(() => setDone(false), 2000);
+  };
+  return (
+    <Button size="sm" variant="ghost" onClick={() => void onClick()} className={confirm ? "text-danger" : undefined}>
+      {done ? "已清空" : confirm ? "再点一次，清空全部历史" : "清空全部历史"}
+    </Button>
   );
 }

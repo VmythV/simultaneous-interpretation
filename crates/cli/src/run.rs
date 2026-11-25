@@ -130,6 +130,7 @@ pub async fn run(
     no_translate: bool,
     file: Option<PathBuf>,
     silence_ms: u32,
+    speculative: bool,
 ) -> Result<()> {
     let stt = config::stt()?;
     let translate = if no_translate { None } else { Some(config::translate()?) };
@@ -139,7 +140,7 @@ pub async fn run(
         stt.model,
         translate.as_ref().map(|t| format!("{} → {}（原文是 {} 时译为 {}）", t.llm.model, t.target_lang, t.target_lang, t.fallback_lang)).unwrap_or("关闭".into())
     );
-    let cfg = PipelineConfig { vad: VadConfig { min_silence_ms: silence_ms, ..Default::default() }, stt, translate };
+    let cfg = PipelineConfig { vad: VadConfig { min_silence_ms: silence_ms, ..Default::default() }, stt, translate, speculative };
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
     let pipeline = Pipeline::start(cfg, ev_tx)?;
     let mut captures = Vec::new();

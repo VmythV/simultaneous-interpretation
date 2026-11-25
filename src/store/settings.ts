@@ -8,6 +8,8 @@ interface SettingsStore {
   saving: boolean;
   savedAt: number | null;
   saveError: string | null;
+  /** 保存时的非致命问题（如快捷键注册失败） */
+  warnings: string[];
   load: () => Promise<void>;
   /** 修改设置并在 400ms 后自动保存 */
   update: (fn: (s: Settings) => Settings) => void;
@@ -26,6 +28,7 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   saving: false,
   savedAt: null,
   saveError: null,
+  warnings: [],
 
   load: async () => {
     const [settings, presets] = await Promise.all([api.getSettings(), api.getPresets()]);
@@ -53,8 +56,8 @@ export const useSettings = create<SettingsStore>((set, get) => ({
     lastLocalEdit = Date.now();
     set({ settings: s, saving: true });
     try {
-      await api.saveSettings(s);
-      set({ saving: false, savedAt: Date.now(), saveError: null });
+      const r = await api.saveSettings(s);
+      set({ saving: false, savedAt: Date.now(), saveError: null, warnings: r.warnings });
     } catch (e) {
       set({ saving: false, saveError: errorText(e) });
     }

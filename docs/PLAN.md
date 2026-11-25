@@ -145,7 +145,7 @@
 | 网络 | `reqwest`（SSE 流式）+ `tokio-tungstenite`（WebSocket） | — |
 | 配置 | JSON 文件 | 放在 `~/Library/Application Support/<bundle id>/` |
 | 密钥 | 直接保存在设置文件里 | 自用场景，按用户要求不用钥匙串；设置文件权限设为 600（仅本人可读） |
-| 历史记录 | SQLite（`rusqlite`） | 只在开启"保存历史记录"时写入 |
+| 历史记录 | JSON 文件（每次会话一个 + `index.json`） | 只在开启"保存历史记录"时写入；M2 定稿，自用数据量小，不引入数据库 |
 
 ### 5.2 数据流
 
@@ -270,7 +270,7 @@ pub trait Translator: Send + Sync {
 |---|---|---|
 | 配置 | `settings.json` | 下文有结构示例 |
 | API Key | `settings.json` | 识别和翻译各一个字段；选了"和识别用同一个"就共用；文件权限 600 |
-| 历史记录 | `history.db`（SQLite） | 只在开启"保存历史"时写入；关闭开关不会删掉已有记录，另有"清空历史"按钮 |
+| 历史记录 | `history/<开始时间>.json` + `history/index.json` | 只在开启"保存历史"时写入；关闭开关不会删掉已有记录，另有"清空历史"按钮 |
 
 每次"开始 → 停止"算一个会话。导出格式支持 TXT、Markdown 和 SRT（SRT 带时间轴）。
 
@@ -311,20 +311,7 @@ pub trait Translator: Send + Sync {
 }
 ```
 
-**历史表结构**
-
-```sql
-CREATE TABLE sessions (
-  id INTEGER PRIMARY KEY, started_at INTEGER, ended_at INTEGER,
-  source TEXT, target_lang TEXT
-);
-CREATE TABLE utterances (
-  id INTEGER PRIMARY KEY, session_id INTEGER REFERENCES sessions(id),
-  channel TEXT,             -- mic / system
-  start_ms INTEGER, end_ms INTEGER,
-  text TEXT, lang TEXT, translation TEXT
-);
-```
+**历史记录文件**：每条包含 `id`、`startedAt`、`endedAt`、`source`、`targetLang`，以及 `entries[]`（`id`、`channel`、`text`、`translation`、`startMs`、`endMs`）。
 
 ### 5.7 前后端接口
 
@@ -426,7 +413,7 @@ simultaneous-interpretation/
 - 中文边说边出字；一句说完后，1.5 秒内开始出现译文（流式模式）。
 - 切换音源正常。
 
-### M2 完整体验
+### M2 完整体验（✅ 已开发完成，待用户验收；记录见 [M2.md](M2.md)）
 
 - 会议模式（两路同时，"我 / 对方"标签，回声去重）
 - 悬浮字幕、菜单栏图标、全局快捷键

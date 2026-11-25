@@ -2,7 +2,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-export type Source = "mic" | "system";
+export type Source = "mic" | "system" | "both";
+/** 单个音源（权限、通道） */
+export type SingleSource = "mic" | "system";
 export type Channel = "mic" | "system";
 export type SttMode = "aliyun-realtime" | "openai-compatible";
 
@@ -27,6 +29,21 @@ export interface LlmSettings {
   prompt: string;
 }
 
+export type SubtitleShow = "both" | "translation" | "original";
+
+export interface SubtitleSettings {
+  fontSize: number;
+  opacity: number;
+  show: SubtitleShow;
+  lines: number;
+}
+
+export interface HotkeySettings {
+  toggle: string;
+  subtitle: string;
+  clickThrough: string;
+}
+
 export interface Settings {
   onboarded: boolean;
   source: Source;
@@ -39,7 +56,48 @@ export interface Settings {
   vadThreshold: number;
   stt: SttSettings;
   translate: LlmSettings;
+  subtitle: SubtitleSettings;
+  hotkeys: HotkeySettings;
+  history: { save: boolean };
 }
+
+export interface UiState {
+  subtitleVisible: boolean;
+  clickThrough: boolean;
+}
+
+export interface SaveResult {
+  warnings: string[];
+}
+
+export interface HistoryEntry {
+  id: number;
+  channel: Channel;
+  text: string;
+  translation: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface HistorySummary {
+  id: string;
+  startedAt: number;
+  endedAt: number;
+  source: Source;
+  count: number;
+  preview: string;
+}
+
+export interface HistoryRecord {
+  id: string;
+  startedAt: number;
+  endedAt: number;
+  source: Source;
+  targetLang: string;
+  entries: HistoryEntry[];
+}
+
+export type ExportFormat = "txt" | "md" | "srt";
 
 export interface SttPreset {
   id: string;
@@ -111,24 +169,39 @@ export interface TestResult {
   ms: number;
 }
 
-export type SettingsTab = "general" | "stt" | "translate";
+export type SettingsTab = "general" | "stt" | "translate" | "subtitle" | "hotkeys";
 
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
-  saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  saveSettings: (settings: Settings) => invoke<SaveResult>("save_settings", { settings }),
+  getHotkeyErrors: () => invoke<string[]>("get_hotkey_errors"),
+  suspendHotkeys: (suspend: boolean) => invoke<string[]>("suspend_hotkeys", { suspend }),
   getPresets: () => invoke<Presets>("get_presets"),
   listInputDevices: () => invoke<InputDevice[]>("list_input_devices"),
   getSessionState: () => invoke<SessionState>("get_session_state"),
   start: () => invoke<void>("start_session"),
   stop: () => invoke<void>("stop_session"),
-  checkPermission: (kind: Source) => invoke<Permission>("check_permission", { kind }),
-  requestPermission: (kind: Source) => invoke<Permission>("request_permission", { kind }),
-  openPrivacySettings: (kind: Source) => invoke<void>("open_privacy_settings", { kind }),
+  checkPermission: (kind: SingleSource) => invoke<Permission>("check_permission", { kind }),
+  requestPermission: (kind: SingleSource) => invoke<Permission>("request_permission", { kind }),
+  openPrivacySettings: (kind: SingleSource) => invoke<void>("open_privacy_settings", { kind }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   testStt: (settings: Settings) => invoke<TestResult>("test_stt", { settings }),
   testTranslate: (settings: Settings) => invoke<TestResult>("test_translate", { settings }),
   retranslate: (uttId: number, text: string) => invoke<void>("retranslate", { uttId, text }),
   openSettings: (tab?: SettingsTab) => invoke<void>("open_settings", { tab: tab ?? null }),
+  getUiState: () => invoke<UiState>("get_ui_state"),
+  setSubtitleVisible: (visible: boolean) => invoke<void>("set_subtitle_visible", { visible }),
+  setClickThrough: (on: boolean) => invoke<void>("set_click_through", { on }),
+  showMain: () => invoke<void>("show_main"),
+  openHistory: () => invoke<void>("open_history"),
+  listHistory: () => invoke<HistorySummary[]>("list_history"),
+  getHistory: (id: string) => invoke<HistoryRecord>("get_history", { id }),
+  deleteHistory: (id: string) => invoke<void>("delete_history", { id }),
+  clearHistory: () => invoke<void>("clear_history"),
+  exportHistory: (id: string, format: ExportFormat, title: string) => invoke<string | null>("export_history", { id, format, title }),
+  exportEntries: (entries: HistoryEntry[], format: ExportFormat, title: string) =>
+    invoke<string | null>("export_entries", { entries, format, title }),
+  revealFile: (path: string) => invoke<void>("reveal_file", { path }),
 };
 
 export const events = {
@@ -136,7 +209,28 @@ export const events = {
   session: (cb: (ev: SessionEvent) => void): Promise<UnlistenFn> => listen<SessionEvent>("session", (e) => cb(e.payload)),
   settingsChanged: (cb: (s: Settings) => void): Promise<UnlistenFn> => listen<Settings>("settings-changed", (e) => cb(e.payload)),
   settingsTab: (cb: (tab: SettingsTab) => void): Promise<UnlistenFn> => listen<SettingsTab>("settings-tab", (e) => cb(e.payload)),
+  uiState: (cb: (s: UiState) => void): Promise<UnlistenFn> => listen<UiState>("ui-state", (e) => cb(e.payload)),
+  requestToggle: (cb: () => void): Promise<UnlistenFn> => listen("request-toggle", () => cb()),
+  requestSource: (cb: (s: Source) => void): Promise<UnlistenFn> => listen<Source>("request-source", (e) => cb(e.payload)),
+  historyChanged: (cb: () => void): Promise<UnlistenFn> => listen("history-changed", () => cb()),
 };
+
+/** 本地时间格式化：2026-11-26 10:30 */
+export function formatDateTime(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 快捷键显示：Ctrl+Alt+S → ⌃⌥S */
+export function formatHotkey(accel: string): string {
+  if (!accel) return "";
+  const sym: Record<string, string> = { CTRL: "⌃", CONTROL: "⌃", ALT: "⌥", OPTION: "⌥", SHIFT: "⇧", CMD: "⌘", COMMAND: "⌘", SUPER: "⌘" };
+  return accel
+    .split("+")
+    .map((t) => sym[t.toUpperCase()] ?? t.replace(/^Key/, "").replace(/^Digit/, ""))
+    .join("");
+}
 
 /** invoke 失败时 reject 的是字符串 */
 export function errorText(e: unknown): string {

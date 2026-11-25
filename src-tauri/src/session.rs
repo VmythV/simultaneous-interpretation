@@ -1,41 +1,18 @@
-//! 会话：一次"开始 → 停止"。持有流水线和音源采集，把流水线事件转发给前端。
-
-use std::path::PathBuf;
-use std::sync::Mutex;
+//! 会话：一次"开始 → 停止"。持有流水线和音源采集，把流水线事件转发给前端并写入历史记录。
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tingyi_core::audio::{self, CaptureHandle, CaptureSender};
 use tingyi_core::pipeline::Pipeline;
 use tokio::sync::mpsc;
 
-use crate::settings::{Settings, Source};
+use crate::settings::Source;
+use crate::state::AppState;
 
 pub struct Session {
     pipeline: Pipeline,
     captures: Vec<CaptureHandle>,
     forward: tauri::async_runtime::JoinHandle<()>,
-}
-
-pub struct AppState {
-    pub settings: Mutex<Settings>,
-    pub settings_path: PathBuf,
-    pub session: tokio::sync::Mutex<Option<Session>>,
-    pub http: reqwest::Client,
-}
-
-impl AppState {
-    pub fn new(settings: Settings, settings_path: PathBuf) -> Self {
-        let http = reqwest::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("创建 HTTP 客户端失败");
-        Self { settings: Mutex::new(settings), settings_path, session: tokio::sync::Mutex::new(None), http }
-    }
-
-    pub fn settings(&self) -> Settings {
-        self.settings.lock().unwrap().clone()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -56,18 +33,25 @@ pub struct SessionEvent {
 }
 
 pub fn emit_state(app: &AppHandle, state: SessionState, source: Option<Source>, error: Option<String>) {
+    *app.state::<AppState>().session_state.lock().unwrap() = state;
     let _ = app.emit("session", SessionEvent { state, source, error });
+    crate::tray::refresh(app);
 }
 
 fn start_capture(source: Source, mic_device: String, tx: CaptureSender) -> anyhow::Result<Vec<CaptureHandle>> {
-    let handle = match source {
-        Source::Mic => audio::mic::start(Some(mic_device.as_str()).filter(|d| !d.is_empty()), tx)?,
-        #[cfg(target_os = "macos")]
-        Source::System => audio::system_macos::start(tx)?,
-        #[cfg(not(target_os = "macos"))]
-        Source::System => anyhow::bail!("电脑声音采集暂时只支持 macOS"),
-    };
-    Ok(vec![handle])
+    let mic = || audio::mic::start(Some(mic_device.as_str()).filter(|d| !d.is_empty()), tx.clone());
+    #[cfg(target_os = "macos")]
+    let system = || audio::system_macos::start(tx.clone());
+    #[cfg(not(target_os = "macos"))]
+    let system = || -> anyhow::Result<CaptureHandle> { anyhow::bail!("电脑声音采集暂时只支持 macOS") };
+    Ok(match source {
+        Source::Mic => vec![mic()?],
+        Source::System => vec![system()?],
+        Source::Both => {
+            let m = mic()?;
+            vec![m, system()?]
+        }
+    })
 }
 
 pub async fn start(app: &AppHandle, state: &AppState) -> Result<(), String> {
@@ -100,9 +84,11 @@ pub async fn start(app: &AppHandle, state: &AppState) -> Result<(), String> {
         }
     };
 
+    state.history.begin(source, &settings.target_lang, settings.history.save);
     let app2 = app.clone();
     let forward = tauri::async_runtime::spawn(async move {
         while let Some(ev) = ev_rx.recv().await {
+            app2.state::<AppState>().history.on_event(&ev);
             let _ = app2.emit("pipeline", &ev);
         }
     });
@@ -122,6 +108,7 @@ pub async fn stop(app: &AppHandle, state: &AppState) {
     let _ = tauri::async_runtime::spawn_blocking(move || drop(captures)).await;
     pipeline.shutdown().await;
     let _ = forward.await;
+    state.history.end();
     emit_state(app, SessionState::Idle, None, None);
 }
 
