@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/cli"]
+members = ["crates/core", "crates/cli", "src-tauri"]
+# 根目录 cargo build/test 默认不编译桌面应用（它需要先生成 sidecar）
+default-members = ["crates/core", "crates/cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,3 +14,11 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "signal"] }
+
+# macOS 27 上，系统 strip 处理过的 dylib/可执行文件可能被 dyld 拒绝加载
+# （"mis-aligned LINKEDIT string pool"），release 模式关闭 strip
+[profile.release]
+strip = false
+
+[profile.release.build-override]
+strip = false

@@ -32,7 +32,7 @@
 1. **一眼看懂**：没开始时，主窗口中间直接写"实时语音转文字 + 翻译"，下面用三步说明怎么用。
 2. **主界面只有三个控件**：听什么、译成什么、开始/停止。其余设置全部放进设置窗口。
 3. **一个主按钮**：开始/停止是唯一的主操作，也能用全局快捷键触发。
-4. **配置靠预设**：选服务商 → 粘贴 API Key → 点"测试"。Base URL、模型名自动填好，收在"高级"里。
+4. **配置靠预设**：选服务商 → 粘贴 API Key → 点"测试"。Base URL、模型名自动填好，收在"高级"里。百炼的业务空间专属 Key 走通用域名也能用，不需要额外填地址。
 5. **首次启动有向导**：3 步配好，以后打开就能用。
 6. **报错说人话**：出错的位置直接显示原因，并给一个解决按钮（比如"API Key 无效 → 去设置"）。
 7. **视觉**：跟随系统浅色/深色；用系统字体（苹方）；只用一种强调色；多留白。译文是主角（深色、稍大），原文是配角（灰色、稍小）。
@@ -144,7 +144,7 @@
 | 语种判断 | `whatlang` + 字符类型统计 | 在本地判断原文是什么语言，决定往哪个方向翻译 |
 | 网络 | `reqwest`（SSE 流式）+ `tokio-tungstenite`（WebSocket） | — |
 | 配置 | JSON 文件 | 放在 `~/Library/Application Support/<bundle id>/` |
-| 密钥 | `keyring`（macOS 钥匙串） | API Key 不明文写入磁盘 |
+| 密钥 | 直接保存在设置文件里 | 自用场景，按用户要求不用钥匙串；设置文件权限设为 600（仅本人可读） |
 | 历史记录 | SQLite（`rusqlite`） | 只在开启"保存历史记录"时写入 |
 
 ### 5.2 数据流
@@ -269,7 +269,7 @@ pub trait Translator: Send + Sync {
 | 内容 | 位置 | 说明 |
 |---|---|---|
 | 配置 | `settings.json` | 下文有结构示例 |
-| API Key | macOS 钥匙串 | 识别和翻译各一个条目；如果选了"和识别用同一个"，就共用一个 |
+| API Key | `settings.json` | 识别和翻译各一个字段；选了"和识别用同一个"就共用；文件权限 600 |
 | 历史记录 | `history.db`（SQLite） | 只在开启"保存历史"时写入；关闭开关不会删掉已有记录，另有"清空历史"按钮 |
 
 每次"开始 → 停止"算一个会话。导出格式支持 TXT、Markdown 和 SRT（SRT 带时间轴）。
@@ -335,7 +335,6 @@ CREATE TABLE utterances (
 | `start(source)` / `stop()` | 开始 / 停止 |
 | `list_input_devices()` | 列出麦克风设备 |
 | `get_settings()` / `save_settings()` | 读取 / 保存配置 |
-| `set_api_key(kind, key)` | 把 Key 写入钥匙串 |
 | `test_stt()` / `test_translator()` | 测试连接 |
 | `list_sessions()` / `get_session(id)` / `delete_session(id)` / `clear_history()` | 历史记录 |
 | `export_session(id, format)` | 导出 |
@@ -372,7 +371,7 @@ simultaneous-interpretation/
 ├── native/macos-audio-tap/       # Swift 辅助程序：抓电脑声音
 ├── resources/silero_vad.onnx     # 编译时嵌入 tingyi-core
 ├── scripts/                      # 编译辅助程序、打包开发版 App
-├── src-tauri/                    # （M1）Tauri 外壳：命令、配置、钥匙串、历史
+├── src-tauri/                    # （M1）Tauri 外壳：命令、设置、会话管理
 └── src/                          # （M1）React 前端
     ├── windows/                  # main / subtitle / settings / onboarding
     ├── components/
@@ -412,10 +411,10 @@ simultaneous-interpretation/
 
 **验收**：在命令行里说一句中文，能实时打出原文，并跟着打出英文译文；放一段英文视频，能打出英文原文和中文译文。
 
-### M1 最小可用版本
+### M1 最小可用版本（✅ 已开发完成，待用户验收）
 
 - 搭好 Tauri 应用骨架：主窗口（4.1、4.2）、设置窗口（4.5）、首次启动向导（4.4）
-- 服务商预设，Key 存入钥匙串，测试连接
+- 服务商预设，Key 存在设置里，测试连接
 - 麦克风和电脑声音二选一，可切换
 - 识别：百炼流式 + OpenAI 兼容分段
 - 翻译：大模型流式输出，自动判断翻译方向
@@ -425,7 +424,7 @@ simultaneous-interpretation/
 
 - 配置完重启软件，点一下"开始"就能用。
 - 中文边说边出字；一句说完后，1.5 秒内开始出现译文（流式模式）。
-- 切换音源正常；配置文件里没有明文 Key。
+- 切换音源正常。
 
 ### M2 完整体验
 

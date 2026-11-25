@@ -49,6 +49,16 @@ pub fn request_permission() -> Result<String> {
     Ok(run_once("--request")?["permission"].as_str().unwrap_or("unknown").to_string())
 }
 
+/// 检查麦克风权限（归属于当前 App）：granted / denied / undetermined
+pub fn check_mic_permission() -> Result<String> {
+    Ok(run_once("--mic-check")?["permission"].as_str().unwrap_or("unknown").to_string())
+}
+
+/// 请求麦克风权限（会弹系统授权框并等待用户选择）
+pub fn request_mic_permission() -> Result<String> {
+    Ok(run_once("--mic-request")?["permission"].as_str().unwrap_or("unknown").to_string())
+}
+
 /// 开始采集电脑声音。音频以 16kHz 单声道发送到 `tx`。
 pub fn start(tx: CaptureSender) -> Result<CaptureHandle> {
     start_with(&require_helper()?, tx)

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "听译",
+  "version": "0.1.0",
+  "identifier": "app.tingyi.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "听译",
+        "width": 780,
+        "height": 600,
+        "minWidth": 560,
+        "minHeight": 440,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Productivity",
+    "shortDescription": "实时语音转文字 + 翻译",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
+    "externalBin": ["binaries/audio-tap"],
+    "macOS": {
+      "minimumSystemVersion": "14.2",
+      "signingIdentity": "-",
+      "entitlements": "entitlements.plist"
+    }
+  }
+}

@@ -5,6 +5,9 @@
 //   audio-tap --meter           调试用：不输出 PCM，每 0.5 秒在 stderr 打印一次音量
 //   audio-tap --check           只检查"系统录音"权限，打印 JSON 后退出
 //   audio-tap --request         请求"系统录音"权限（弹系统授权框），打印 JSON 后退出
+//   audio-tap --mic-check       检查麦克风权限
+//   audio-tap --mic-request     请求麦克风权限
+//   （权限归属于启动本程序的 App）
 //
 // stderr：每行一个 JSON 事件，例如
 //   {"event":"format","sampleRate":48000,"channels":1}
@@ -14,6 +17,7 @@
 //
 // 退出条件：SIGINT / SIGTERM、stdout 管道断开、--watch-stdin 时 stdin 被关闭（父进程退出）。
 
+import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
@@ -78,6 +82,28 @@ if args.contains("--request") {
     let (state, raw) = Permission.preflight()
     emit(["event": "permission", "requestResult": granted.map { $0 ? "granted" : "denied" } ?? "unavailable",
           "permission": state, "raw": raw])
+    exit(0)
+}
+
+func micState() -> String {
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: return "granted"
+    case .denied, .restricted: return "denied"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "unknown"
+    }
+}
+
+if args.contains("--mic-check") {
+    emit(["event": "permission", "permission": micState()])
+    exit(0)
+}
+
+if args.contains("--mic-request") {
+    let sem = DispatchSemaphore(value: 0)
+    AVCaptureDevice.requestAccess(for: .audio) { _ in sem.signal() }
+    sem.wait()
+    emit(["event": "permission", "permission": micState()])
     exit(0)
 }
 

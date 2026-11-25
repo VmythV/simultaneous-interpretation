@@ -52,6 +52,8 @@ pub type EventSender = mpsc::UnboundedSender<PipelineEvent>;
 
 struct Shared {
     cfg: PipelineConfig,
+    /// (目标语言, 备用语言)，运行中可修改
+    langs: std::sync::RwLock<(String, String)>,
     events: EventSender,
     next_utt: AtomicU64,
     http: reqwest::Client,
@@ -74,6 +76,7 @@ struct FinalUtt {
 }
 
 pub struct Pipeline {
+    shared: Arc<Shared>,
     input: CaptureSender,
     stop: Option<oneshot::Sender<()>>,
     router: JoinHandle<()>,
@@ -82,11 +85,21 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn start(cfg: PipelineConfig, events: EventSender) -> Result<Self> {
         let http = reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).build()?;
-        let shared = Arc::new(Shared { cfg, events, next_utt: AtomicU64::new(1), http });
+        let langs = cfg
+            .translate
+            .as_ref()
+            .map(|t| (t.target_lang.clone(), t.fallback_lang.clone()))
+            .unwrap_or_else(|| ("zh".into(), "en".into()));
+        let shared = Arc::new(Shared { cfg, langs: std::sync::RwLock::new(langs), events, next_utt: AtomicU64::new(1), http });
         let (input, input_rx) = mpsc::unbounded_channel();
         let (stop, stop_rx) = oneshot::channel();
-        let router = tokio::spawn(router(shared, input_rx, stop_rx));
-        Ok(Self { input, stop: Some(stop), router })
+        let router = tokio::spawn(router(shared.clone(), input_rx, stop_rx));
+        Ok(Self { shared, input, stop: Some(stop), router })
+    }
+
+    /// 运行中修改翻译语言，对之后的句子生效
+    pub fn set_languages(&self, target: &str, fallback: &str) {
+        *self.shared.langs.write().unwrap() = (target.to_string(), fallback.to_string());
     }
 
     /// 音源采集用的发送端
@@ -296,7 +309,10 @@ async fn translator(settings: TranslateSettings, mut rx: mpsc::UnboundedReceiver
     let mut tasks = JoinSet::new();
 
     while let Some(f) = rx.recv().await {
-        let target = lang::choose_target(f.lang.as_deref(), &settings.target_lang, &settings.fallback_lang);
+        let target = {
+            let (t, fb) = &*sh.langs.read().unwrap();
+            lang::choose_target(f.lang.as_deref(), t, fb)
+        };
         sh.emit(PipelineEvent::TrStart { utt_id: f.utt_id, target_lang: target.clone() });
         let ctx: Vec<(String, String)> = context.lock().unwrap().iter().cloned().collect();
         let (sh, settings, context) = (sh.clone(), settings.clone(), context.clone());

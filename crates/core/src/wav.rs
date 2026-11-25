@@ -39,7 +39,16 @@ pub fn write(path: &Path, samples: &[f32]) -> Result<()> {
 
 /// 读取 16kHz 单声道 WAV（其他格式请先转换）
 pub fn read(path: &Path) -> Result<Vec<f32>> {
-    let mut r = hound::WavReader::open(path).with_context(|| format!("无法打开 {}", path.display()))?;
+    let r = hound::WavReader::open(path).with_context(|| format!("无法打开 {}", path.display()))?;
+    decode(r)
+}
+
+/// 从内存读取 16kHz 单声道 WAV
+pub fn read_bytes(bytes: &[u8]) -> Result<Vec<f32>> {
+    decode(hound::WavReader::new(Cursor::new(bytes))?)
+}
+
+fn decode<R: std::io::Read>(mut r: hound::WavReader<R>) -> Result<Vec<f32>> {
     let spec = r.spec();
     if spec.channels != 1 || spec.sample_rate != TARGET_RATE {
         bail!("需要 16kHz 单声道 WAV，实际是 {}Hz / {} 声道", spec.sample_rate, spec.channels);

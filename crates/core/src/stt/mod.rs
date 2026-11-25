@@ -40,6 +40,36 @@ pub enum SttOut {
     Error(String),
 }
 
+/// 识别一段完整音频（用于"测试连接"）。流式模式会按约 5 倍速推送音频。
+pub async fn transcribe_once(http: &reqwest::Client, cfg: &SttConfig, samples: &[f32]) -> anyhow::Result<String> {
+    match cfg.provider {
+        SttProviderKind::OpenaiCompatible => openai::transcribe(http, cfg, samples).await,
+        SttProviderKind::AliyunRealtime => {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let stream = aliyun::AliyunStream::spawn(cfg.clone(), tx);
+            stream.begin();
+            for chunk in samples.chunks(1600) {
+                stream.audio(chunk.to_vec());
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            stream.end();
+            let mut text = String::new();
+            loop {
+                let out = tokio::time::timeout(std::time::Duration::from_secs(15), rx.recv())
+                    .await
+                    .map_err(|_| anyhow::anyhow!("等待识别结果超时"))?;
+                match out {
+                    Some(SttOut::Final { text: t, .. }) => text.push_str(&clean_text(&t)),
+                    Some(SttOut::Partial { .. }) => {}
+                    Some(SttOut::TaskDone { .. }) | None => break,
+                    Some(SttOut::Error(e)) => anyhow::bail!(e),
+                }
+            }
+            Ok(text)
+        }
+    }
+}
+
 /// 清理识别结果：去掉 SenseVoice 一类模型可能带的 <|xx|> 标记、首尾空白
 pub fn clean_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

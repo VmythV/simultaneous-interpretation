@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-rec: var(--rec);
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+}
+
+:root {
+  --bg: #ffffff;
+  --surface: #f6f7f9;
+  --surface-2: #eceef2;
+  --line: #e3e6eb;
+  --fg: #15171c;
+  --fg-2: #5a606c;
+  --fg-3: #9aa0ab;
+  --accent: #3d63f5;
+  --accent-hover: #2f54e3;
+  --accent-soft: #ebf0ff;
+  --on-accent: #ffffff;
+  --danger: #d93d42;
+  --danger-soft: #fdeeee;
+  --ok: #23955f;
+  --ok-soft: #e8f6ee;
+  --rec: #ef4444;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b;
+    --surface: #1e2024;
+    --surface-2: #272a30;
+    --line: #2f3238;
+    --fg: #eceef2;
+    --fg-2: #a4aab5;
+    --fg-3: #6c727d;
+    --accent: #6d8cff;
+    --accent-hover: #8099ff;
+    --accent-soft: #222b47;
+    --on-accent: #ffffff;
+    --danger: #ff6b70;
+    --danger-soft: #3a2023;
+    --ok: #4cc38a;
+    --ok-soft: #1b3326;
+    --rec: #ff5a5a;
+    color-scheme: dark;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  /* 桌面应用：默认不可选中，记录区单独开启 */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button {
+  cursor: default;
+}
+
+/* 正在识别的光标 */
+@keyframes caret {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: caret 1s steps(1) infinite;
+}
+
+/* 翻译中的三个点 */
+@keyframes dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.dots span {
+  animation: dot 1.2s infinite;
+}
+.dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* 录音指示灯 */
+@keyframes rec {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.rec-dot {
+  animation: rec 1.4s ease-in-out infinite;
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 8px;
+  border: 3px solid var(--bg);
+}
